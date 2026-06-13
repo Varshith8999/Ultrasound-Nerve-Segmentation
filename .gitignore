@@ -1,0 +1,27 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Trained model weights: best_model_v2.pth is committed (45 MB, under GitHub's
+# 100 MB limit) so the app runs out-of-the-box. Ignore any other .pth files.
+models/*.pth
+!models/best_model_v2.pth
+
+# Dataset (not tracked — download separately from Kaggle)
+ultrasound-nerve-segmentation/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/

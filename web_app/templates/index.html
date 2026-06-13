@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Nerve Segmentation — {{ model_name }}</title>
+<style>
+/* ── reset & base ─────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d1a;--panel:#14142b;--card:#1c1c3a;--border:#2e2e5e;
+  --accent:#00d4aa;--accent2:#7b5ea7;--red:#e94560;--amber:#f5a623;
+  --text:#e0e0f0;--muted:#7070a0;--white:#ffffff;
+  --radius:14px;--shadow:0 8px 32px rgba(0,0,0,.5);
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;
+     min-height:100vh;display:flex;flex-direction:column}
+
+/* ── header ──────────────────────────────────────────────── */
+header{background:linear-gradient(135deg,#0d0d2b 0%,#1a1a3e 100%);
+       border-bottom:1px solid var(--border);padding:18px 36px;
+       display:flex;align-items:center;gap:16px}
+header .logo{width:42px;height:42px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+             border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px}
+header h1{font-size:1.35rem;font-weight:700;color:var(--white)}
+header p{font-size:.8rem;color:var(--muted);margin-top:2px}
+.badge{margin-left:auto;background:var(--card);border:1px solid var(--border);
+       border-radius:20px;padding:5px 14px;font-size:.75rem;color:var(--accent);
+       display:flex;align-items:center;gap:6px}
+.badge::before{content:'';width:7px;height:7px;border-radius:50%;
+               background:var(--accent);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── main layout ─────────────────────────────────────────── */
+main{flex:1;display:grid;grid-template-columns:400px 1fr;gap:0;height:calc(100vh - 73px)}
+
+/* ── left panel (upload) ─────────────────────────────────── */
+.left{background:var(--panel);border-right:1px solid var(--border);
+      padding:28px 24px;display:flex;flex-direction:column;gap:20px;overflow-y:auto}
+
+.section-title{font-size:.7rem;font-weight:700;letter-spacing:.1em;
+               color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+
+/* drop zone */
+#dropzone{border:2px dashed var(--border);border-radius:var(--radius);
+          min-height:200px;display:flex;flex-direction:column;
+          align-items:center;justify-content:center;gap:10px;
+          cursor:pointer;transition:all .25s;padding:20px;text-align:center}
+#dropzone:hover,#dropzone.dragover{border-color:var(--accent);
+  background:rgba(0,212,170,.06)}
+#dropzone .icon{font-size:2.8rem;opacity:.5}
+#dropzone p{color:var(--muted);font-size:.85rem}
+#dropzone p b{color:var(--text)}
+#dropzone small{color:var(--muted);font-size:.72rem}
+#preview-box{display:none;position:relative}
+#preview-box img{width:100%;border-radius:10px;display:block}
+#preview-box .clear-btn{position:absolute;top:8px;right:8px;
+  background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;
+  width:28px;height:28px;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center}
+
+/* optional mask upload */
+.mask-upload{background:var(--card);border:1px solid var(--border);
+             border-radius:10px;padding:14px}
+.mask-upload label{font-size:.8rem;color:var(--muted);display:block;
+                   margin-bottom:8px}
+#mask-input{display:none}
+.mask-btn{display:inline-flex;align-items:center;gap:6px;
+          background:transparent;border:1px solid var(--border);
+          color:var(--muted);border-radius:8px;padding:6px 14px;
+          font-size:.8rem;cursor:pointer;transition:all .2s}
+.mask-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+#mask-name{font-size:.75rem;color:var(--accent);margin-top:6px;display:none}
+
+/* threshold slider */
+.slider-row{display:flex;align-items:center;gap:10px}
+.slider-row input[type=range]{flex:1;accent-color:var(--accent)}
+.slider-row span{font-size:.85rem;color:var(--accent);font-weight:700;
+                 min-width:36px;text-align:right}
+
+/* predict button */
+#predict-btn{width:100%;padding:13px;border:none;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 100%);
+  color:#fff;font-size:1rem;font-weight:700;cursor:pointer;
+  transition:opacity .2s,transform .1s;letter-spacing:.04em}
+#predict-btn:hover:not(:disabled){opacity:.88;transform:translateY(-1px)}
+#predict-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* spinner */
+.spinner{display:none;width:22px;height:22px;border:3px solid rgba(255,255,255,.2);
+         border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;
+         margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── right panel (results) ───────────────────────────────── */
+.right{padding:28px;overflow-y:auto;display:flex;flex-direction:column;gap:24px}
+
+/* placeholder */
+#placeholder{flex:1;display:flex;flex-direction:column;
+             align-items:center;justify-content:center;gap:14px;opacity:.4}
+#placeholder .big-icon{font-size:4rem}
+#placeholder p{font-size:.9rem;color:var(--muted)}
+
+/* results grid */
+#results{display:none;flex-direction:column;gap:24px}
+
+/* metrics row */
+#metrics-row{display:flex;gap:12px;flex-wrap:wrap}
+.metric-card{flex:1;min-width:100px;background:var(--card);
+             border:1px solid var(--border);border-radius:10px;
+             padding:14px;text-align:center}
+.metric-card .val{font-size:1.7rem;font-weight:800;margin-bottom:4px}
+.metric-card .lbl{font-size:.72rem;color:var(--muted);text-transform:uppercase;
+                  letter-spacing:.08em}
+.metric-card.dice .val{color:var(--accent)}
+.metric-card.iou  .val{color:#4a90d9}
+.metric-card.prec .val{color:var(--amber)}
+.metric-card.rec  .val{color:var(--accent2)}
+.metric-card.cov  .val{color:#ff7eb3}
+
+/* image grid */
+.img-grid{display:grid;gap:16px}
+.img-grid.two  {grid-template-columns:repeat(2,1fr)}
+.img-grid.four {grid-template-columns:repeat(2,1fr)}
+
+.result-card{background:var(--card);border:1px solid var(--border);
+             border-radius:var(--radius);overflow:hidden}
+.result-card .caption{padding:10px 14px;font-size:.78rem;font-weight:600;
+                       color:var(--muted);text-transform:uppercase;
+                       letter-spacing:.08em;border-bottom:1px solid var(--border);
+                       display:flex;align-items:center;gap:8px}
+.result-card .caption .dot{width:8px;height:8px;border-radius:50%}
+.result-card img{width:100%;display:block}
+
+/* color legend for overlay */
+.legend{display:flex;gap:16px;padding:8px 14px;font-size:.75rem;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend .swatch{width:12px;height:12px;border-radius:3px}
+
+/* error toast */
+#error-toast{display:none;background:#3a0d1a;border:1px solid var(--red);
+             border-radius:10px;padding:12px 18px;color:var(--red);font-size:.85rem}
+
+/* scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+@media(max-width:900px){
+  main{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .left{border-right:none;border-bottom:1px solid var(--border)}
+  .img-grid.four{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">🫀</div>
+  <div>
+    <h1>Ultrasound Nerve Segmentation</h1>
+    <p>{{ model_name }} &nbsp;·&nbsp; ASPP + CBAM + Deep Supervision</p>
+  </div>
+  <div class="badge">{{ device }}</div>
+</header>
+
+<main>
+
+  <!-- ═══════════ LEFT PANEL ═══════════ -->
+  <aside class="left">
+
+    <!-- Upload -->
+    <div>
+      <div class="section-title">Upload Image</div>
+      <div id="dropzone" onclick="document.getElementById('file-input').click()">
+        <div class="icon">🩻</div>
+        <p><b>Click to browse</b> or drag &amp; drop</p>
+        <small>Supports JPEG · PNG · TIF · BMP</small>
+      </div>
+      <div id="preview-box">
+        <img id="preview-img" src="" alt="preview"/>
+        <button class="clear-btn" onclick="clearImage()" title="Remove">✕</button>
+      </div>
+      <input id="file-input" type="file" accept="image/*" style="display:none"
+             onchange="handleFile(this.files[0])"/>
+    </div>
+
+    <!-- Optional GT mask -->
+    <div class="mask-upload">
+      <label>Optional: Ground-Truth Mask (for metrics)</label>
+      <button class="mask-btn" onclick="document.getElementById('mask-input').click()">
+        📂 Choose mask image
+      </button>
+      <input id="mask-input" type="file" accept="image/*"
+             onchange="handleMask(this.files[0])"/>
+      <div id="mask-name"></div>
+    </div>
+
+    <!-- Threshold -->
+    <div>
+      <div class="section-title">Prediction Threshold</div>
+      <div class="slider-row">
+        <input type="range" id="threshold" min="0.1" max="0.9" step="0.05" value="0.5"
+               oninput="document.getElementById('thr-val').textContent=this.value"/>
+        <span id="thr-val">0.5</span>
+      </div>
+    </div>
+
+    <!-- Predict -->
+    <button id="predict-btn" disabled onclick="runPrediction()">
+      Run Segmentation
+    </button>
+    <div class="spinner" id="spinner"></div>
+    <div id="error-toast"></div>
+
+  </aside>
+
+  <!-- ═══════════ RIGHT PANEL ═══════════ -->
+  <section class="right">
+
+    <!-- placeholder -->
+    <div id="placeholder">
+      <div class="big-icon">🔬</div>
+      <p>Upload an ultrasound image to segment the nerve</p>
+    </div>
+
+    <!-- results (hidden until prediction) -->
+    <div id="results">
+
+      <!-- metrics -->
+      <div id="metrics-row">
+        <div class="metric-card cov">
+          <div class="val" id="m-cov">—</div>
+          <div class="lbl">Coverage %</div>
+        </div>
+      </div>
+
+      <!-- image panels -->
+      <div class="img-grid four" id="img-grid">
+
+        <div class="result-card">
+          <div class="caption">
+            <span class="dot" style="background:#888"></span>Input (CLAHE)
+          </div>
+          <img id="r-input" src=""/>
+        </div>
+
+        <div class="result-card">
+          <div class="caption">
+            <span class="dot" style="background:#ff7b00"></span>Confidence Map
+          </div>
+          <img id="r-heatmap" src=""/>
+        </div>
+
+        <div class="result-card">
+          <div class="caption">
+            <span class="dot" style="background:#00d4aa"></span>Prediction Mask
+          </div>
+          <img id="r-pred" src=""/>
+        </div>
+
+        <div class="result-card" id="overlay-card">
+          <div class="caption">
+            <span class="dot" style="background:#7b5ea7"></span>Overlay
+          </div>
+          <img id="r-overlay" src=""/>
+          <div class="legend">
+            <span><span class="swatch" style="background:#00e651;border-radius:50%"></span>Predicted nerve</span>
+            <span style="opacity:.5;font-size:.7rem">Heat tint = confidence</span>
+          </div>
+        </div>
+
+        <!-- GT card (shown only when mask uploaded) -->
+        <div class="result-card" id="gt-card" style="display:none">
+          <div class="caption">
+            <span class="dot" style="background:#4a90d9"></span>Ground Truth
+          </div>
+          <img id="r-gt" src=""/>
+        </div>
+
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<script>
+// ── state ─────────────────────────────────────────────────
+let imageFile = null;
+let maskFile  = null;
+
+// ── drag & drop ───────────────────────────────────────────
+const dz = document.getElementById("dropzone");
+["dragenter","dragover"].forEach(e =>
+  dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add("dragover"); }));
+["dragleave","drop"].forEach(e =>
+  dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove("dragover"); }));
+dz.addEventListener("drop", ev => {
+  const f = ev.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+// ── file handlers ─────────────────────────────────────────
+function handleFile(file) {
+  if (!file) return;
+  imageFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById("preview-img").src = e.target.result;
+    document.getElementById("dropzone").style.display    = "none";
+    document.getElementById("preview-box").style.display = "block";
+    document.getElementById("predict-btn").disabled = false;
+    hideError();
+    resetResults();
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleMask(file) {
+  if (!file) return;
+  maskFile = file;
+  const el = document.getElementById("mask-name");
+  el.textContent = "✓  " + file.name;
+  el.style.display = "block";
+}
+
+function clearImage() {
+  imageFile = null;
+  maskFile  = null;
+  document.getElementById("preview-box").style.display = "none";
+  document.getElementById("dropzone").style.display    = "flex";
+  document.getElementById("predict-btn").disabled = true;
+  document.getElementById("mask-input").value = "";
+  document.getElementById("mask-name").style.display = "none";
+  document.getElementById("file-input").value = "";
+  resetResults();
+}
+
+// ── prediction ────────────────────────────────────────────
+async function runPrediction() {
+  if (!imageFile) return;
+  setLoading(true);
+  hideError();
+  resetResults();
+
+  const form = new FormData();
+  form.append("image", imageFile);
+  if (maskFile) form.append("mask", maskFile);
+  form.append("threshold", document.getElementById("threshold").value);
+
+  try {
+    const res  = await fetch("/predict", { method:"POST", body: form });
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    displayResults(data);
+  } catch(e) {
+    showError("Network error: " + e.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── display ───────────────────────────────────────────────
+function displayResults(d) {
+  document.getElementById("placeholder").style.display = "none";
+  document.getElementById("results").style.display     = "flex";
+
+  setImg("r-input",   d.input);
+  setImg("r-heatmap", d.heatmap);
+  setImg("r-pred",    d.prediction);
+  setImg("r-overlay", d.overlay);
+
+  document.getElementById("m-cov").textContent = d.coverage + "%";
+
+  // metrics (only if GT was provided)
+  const mrow = document.getElementById("metrics-row");
+  // remove old metric cards except coverage
+  mrow.querySelectorAll(".dice,.iou,.prec,.rec").forEach(c => c.remove());
+
+  if (d.metrics) {
+    const m = d.metrics;
+    const cards = [
+      { cls:"dice", val: m.dice,      lbl:"Dice" },
+      { cls:"iou",  val: m.iou,       lbl:"IoU" },
+      { cls:"prec", val: m.precision, lbl:"Precision" },
+      { cls:"rec",  val: m.recall,    lbl:"Recall" },
+    ];
+    cards.forEach(c => {
+      const div = document.createElement("div");
+      div.className = "metric-card " + c.cls;
+      div.innerHTML = `<div class="val">${(c.val*100).toFixed(1)}%</div>
+                       <div class="lbl">${c.lbl}</div>`;
+      mrow.appendChild(div);
+    });
+  }
+
+  // GT panel
+  if (d.gt) {
+    setImg("r-gt", d.gt);
+    document.getElementById("gt-card").style.display = "block";
+    document.getElementById("img-grid").className = "img-grid four";
+  }
+}
+
+function setImg(id, b64) {
+  document.getElementById(id).src = "data:image/png;base64," + b64;
+}
+
+function resetResults() {
+  document.getElementById("placeholder").style.display = "flex";
+  document.getElementById("results").style.display     = "none";
+  document.getElementById("gt-card").style.display     = "none";
+}
+
+// ── ui helpers ────────────────────────────────────────────
+function setLoading(on) {
+  document.getElementById("predict-btn").disabled = on;
+  document.getElementById("predict-btn").textContent =
+    on ? "Analysing…" : "Run Segmentation";
+  document.getElementById("spinner").style.display = on ? "block" : "none";
+}
+
+function showError(msg) {
+  const t = document.getElementById("error-toast");
+  t.textContent = "⚠ " + msg;
+  t.style.display = "block";
+}
+function hideError() {
+  document.getElementById("error-toast").style.display = "none";
+}
+</script>
+</body>
+</html>
